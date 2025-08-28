@@ -1,212 +1,361 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 
 <head>
-<meta charset="UTF-8">
-<meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Heart Animation</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Heart Animation</title>
 
-<style>
-    canvas {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, .2);
-    }
-</style>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, .2);
+        }
+
+        #controls {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        #controls label {
+            font-size: 14px;
+        }
+
+        #controls input,
+        #controls button {
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 4px;
+            padding: 5px;
+        }
+        
+        #controls input[type="range"] {
+            padding: 0;
+        }
+
+        #controls button {
+            cursor: pointer;
+            background: #e91e63;
+            border-color: #e91e63;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        #controls button:hover {
+            background: #c2185b;
+        }
+        
+        #controls .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
 </head>
 
 <body>
-<canvas id="heart"></canvas>
+    <div id="controls">
+        <div>
+            <label for="text-input">Center Text:</label>
+            <input type="text" id="text-input" value="Trần Thị Kim Thắm ❤">
+        </div>
+        <div>
+            <label for="particle-slider">Particle Count: <span id="particle-count-label">500</span></label>
+            <input type="range" id="particle-slider" min="100" max="1500" step="50" value="500">
+        </div>
+        <div>
+            <label for="trail-slider">Trail Length: <span id="trail-length-label">0.5</span></label>
+            <input type="range" id="trail-slider" min="0.1" max="0.9" step="0.05" value="0.5">
+        </div>
+        <div class="checkbox-wrapper">
+            <input type="checkbox" id="glow-toggle" checked>
+            <label for="glow-toggle">Enable Glow</label>
+        </div>
+        <button id="reset-btn">Reset Animation</button>
+    </div>
 
-<script>
-    window.requestAnimationFrame =
-        window.__requestAnimationFrame ||
-        window.requestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.oRequestAnimationFrame ||
-        window.msRequestAnimationFrame ||
-        (function () {
-            return function (callback, element) {
-                var lastTime = element.__lastTime;
-                if (lastTime === undefined) {
-                    lastTime = 0;
-                }
-                var currTime = Date.now();
-                var timeToCall = Math.max(1, 33 - (currTime - lastTime));
-                window.setTimeout(callback, timeToCall);
-                element.__lastTime = currTime + timeToCall;
+    <canvas id="heart"></canvas>
+
+    <script>
+        // Polyfill for requestAnimationFrame
+        window.requestAnimationFrame =
+            window.requestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            function (callback) {
+                window.setTimeout(callback, 1000 / 60);
             };
-        })();
 
-    window.isDevice = (/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
-        .test(((navigator.userAgent || navigator.vendor || window.opera)).toLowerCase()));
-
-    var loaded = false;
-    var init = function () {
-        if (loaded) return;
-        loaded = true;
-
-        var mobile = window.isDevice;
-        var koef = mobile ? 0.5 : 1;
-        var canvas = document.getElementById("heart");
-        var ctx = canvas.getContext("2d");
-        var width = canvas.width = koef * innerWidth;
-        var height = canvas.height = koef * innerHeight;
-        var rand = Math.random;
-
-        ctx.fillStyle = "rgba(0,0,0,1)";
-        ctx.fillRect(0, 0, width, height);
-
-        var heartPosition = function (rad) {
-            return [
-                Math.pow(Math.sin(rad), 3),
-                -(15 * Math.cos(rad) - 5 * Math.cos(2 * rad) - 2 * Math.cos(3 * rad) - Math.cos(4 * rad))
-            ];
+        // --- Global Variables & Configuration ---
+        const canvas = document.getElementById("heart");
+        const ctx = canvas.getContext("2d");
+        const isDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase());
+        
+        let config = {
+            particleCount: 500,
+            traceK: 0.5,
+            timeDelta: 0.01,
+            glow: true,
+            text: "Trần Thị Kim Thắm ❤",
+            mouseForce: 20,
+            mouseRadius: 100
         };
 
-        var scaleAndTranslate = function (pos, sx, sy, dx, dy) {
-            return [dx + pos[0] * sx, dy + pos[1] * sy];
-        };
+        let width, height, koef, time = 0;
+        let particles = [], stars = [];
+        let pointsOrigin = [], targetPoints = [];
+        let mouse = { x: -9999, y: -9999, isDown: false };
 
-        window.addEventListener("resize", function () {
+        // --- UI Control Handlers ---
+        const textInput = document.getElementById('text-input');
+        const particleSlider = document.getElementById('particle-slider');
+        const trailSlider = document.getElementById('trail-slider');
+        const glowToggle = document.getElementById('glow-toggle');
+        const resetBtn = document.getElementById('reset-btn');
+        const particleCountLabel = document.getElementById('particle-count-label');
+        const trailLengthLabel = document.getElementById('trail-length-label');
+
+        textInput.addEventListener('input', (e) => config.text = e.target.value);
+        particleSlider.addEventListener('input', (e) => {
+            config.particleCount = parseInt(e.target.value);
+            particleCountLabel.textContent = config.particleCount;
+        });
+        trailSlider.addEventListener('input', (e) => {
+            config.traceK = parseFloat(e.target.value);
+            trailLengthLabel.textContent = config.traceK;
+        });
+        glowToggle.addEventListener('change', (e) => config.glow = e.target.checked);
+        resetBtn.addEventListener('click', init);
+
+        // --- Core Functions ---
+        const heartPosition = (rad) => [
+            Math.pow(Math.sin(rad), 3),
+            -(15 * Math.cos(rad) - 5 * Math.cos(2 * rad) - 2 * Math.cos(3 * rad) - Math.cos(4 * rad))
+        ];
+
+        const scaleAndTranslate = (pos, sx, sy, dx, dy) => [dx + pos[0] * sx, dy + pos[1] * sy];
+
+        function setupCanvas() {
+            koef = isDevice ? 1.5 : 1;
             width = canvas.width = koef * innerWidth;
             height = canvas.height = koef * innerHeight;
-            ctx.fillStyle = "rgba(0,0,0,1)";
-            ctx.fillRect(0, 0, width, height);
-        });
-
-        var traceCount = mobile ? 20 : 50;
-        var pointsOrigin = [];
-        var dr = mobile ? 0.3 : 0.1;
-
-        for (var i = 0; i < Math.PI * 2; i += dr)
-            pointsOrigin.push(scaleAndTranslate(heartPosition(i), 210, 13, 0, 0));
-
-        for (var i = 0; i < Math.PI * 2; i += dr)
-            pointsOrigin.push(scaleAndTranslate(heartPosition(i), 150, 9, 0, 0));
-
-        for (var i = 0; i < Math.PI * 2; i += dr)
-            pointsOrigin.push(scaleAndTranslate(heartPosition(i), 90, 5, 0, 0));
-
-        var heartPointsCount = pointsOrigin.length;
-        var targetPoints = [];
-
-        var pulse = function (kx, ky) {
-            for (var i = 0; i < pointsOrigin.length; i++) {
-                targetPoints[i] = [];
-                targetPoints[i][0] = kx * pointsOrigin[i][0] + width / 2;
-                targetPoints[i][1] = ky * pointsOrigin[i][1] + height / 2;
-            }
-        };
-
-        var e = [];
-        for (var i = 0; i < heartPointsCount; i++) {
-            var x = rand() * width;
-            var y = rand() * height;
-            e[i] = {
-                vx: 0,
-                vy: 0,
-                R: 2,
-                speed: rand() + 5,
-                q: ~~(rand() * heartPointsCount),
-                D: 2 * (i % 2) - 1,
-                force: 0.2 * rand() + 0.7,
-                f: "hsla(0," + ~~(40 * rand() + 60) + "%," + ~~(60 * rand() + 20) + "%,.3)",
-                trace: []
-            };
-            for (var k = 0; k < traceCount; k++) e[i].trace[k] = { x: x, y: y };
         }
 
-        var config = {
-            traceK: 0.4,
-            timeDelta: 0.01
-        };
+        function createHeartPoints() {
+            pointsOrigin = [];
+            const dr = isDevice ? 0.3 : 0.1;
+            const scales = [{sx: 210, sy: 13}, {sx: 150, sy: 9}, {sx: 90, sy: 5}];
+            
+            scales.forEach(s => {
+                for (let i = 0; i < Math.PI * 2; i += dr) {
+                    pointsOrigin.push(scaleAndTranslate(heartPosition(i), s.sx, s.sy, 0, 0));
+                }
+            });
+        }
 
-        var time = 0;
-        var loop = function () {
-            var n = -Math.cos(time);
-            pulse((1 + n) * 0.5, (1 + n) * 0.5);
+        function createParticles() {
+            particles = [];
+            const traceCount = isDevice ? 15 : 30;
+            for (let i = 0; i < config.particleCount; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const trace = Array.from({ length: traceCount }, () => ({ x, y }));
+                
+                particles[i] = {
+                    vx: 0, vy: 0,
+                    R: Math.random() * 1.5 + 0.5,
+                    speed: Math.random() + 4,
+                    q: ~~(Math.random() * pointsOrigin.length),
+                    D: 2 * (i % 2) - 1,
+                    force: 0.2 * Math.random() + 0.7,
+                    f: `hsla(${~~(Math.random() * 360)}, 100%, 70%, .6)`,
+                    trace
+                };
+            }
+        }
+        
+        function createStars() {
+            stars = [];
+            for(let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    r: Math.random() * 0.8 + 0.2,
+                    a: Math.random()
+                });
+            }
+        }
+
+        function init() {
+            setupCanvas();
+            createHeartPoints();
+            createParticles();
+            createStars();
+            time = 0; // Reset time for pulse animation
+        }
+
+        function loop() {
+            // --- Update State ---
+            const n = -Math.cos(time);
+            const pulseK = (1 + n) * 0.5;
+            targetPoints = pointsOrigin.map(p => [
+                pulseK * p[0] + width / 2,
+                pulseK * p[1] + height / 2
+            ]);
 
             time += ((Math.sin(time)) < 0 ? 9 : (n > 0.8) ? 0.2 : 1) * config.timeDelta;
 
+            // --- Drawing ---
             ctx.fillStyle = "rgba(0,0,0,.1)";
             ctx.fillRect(0, 0, width, height);
+            
+            // Draw stars
+            ctx.fillStyle = 'white';
+            stars.forEach(star => {
+                star.a += 0.01;
+                const alpha = Math.abs(Math.sin(star.a));
+                ctx.globalAlpha = alpha;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
 
-            for (var i = e.length; i--;) {
-                var u = e[i];
-                var q = targetPoints[u.q];
-                var dx = u.trace[0].x - q[0];
-                var dy = u.trace[0].y - q[1];
-                var length = Math.sqrt(dx * dx + dy * dy);
+            // Draw particles
+            if (config.glow) {
+                ctx.shadowBlur = 10;
+            }
 
-                if (10 > length) {
-                    if (0.95 < rand()) {
-                        u.q = ~~(rand() * heartPointsCount);
+            for (let i = particles.length; i--;) {
+                const u = particles[i];
+                const q = targetPoints[u.q];
+                
+                // Attraction to heart point
+                let dx = u.trace[0].x - q[0];
+                let dy = u.trace[0].y - q[1];
+                let length = Math.sqrt(dx * dx + dy * dy);
+
+                if (length < 10) {
+                    if (Math.random() > 0.95) {
+                        u.q = ~~(Math.random() * pointsOrigin.length);
                     } else {
-                        if (0.99 < rand()) {
-                            u.D *= -1;
-                        }
-                        u.q += u.D;
-                        u.q %= heartPointsCount;
-                        if (0 > u.q) u.q += heartPointsCount;
+                        if (Math.random() > 0.99) u.D *= -1;
+                        u.q = (u.q + u.D + pointsOrigin.length) % pointsOrigin.length;
                     }
                 }
-
+                
                 u.vx += -dx / length * u.speed;
                 u.vy += -dy / length * u.speed;
 
+                // Mouse interaction
+                const mdx = u.trace[0].x - mouse.x;
+                const mdy = u.trace[0].y - mouse.y;
+                const mLength = Math.sqrt(mdx * mdx + mdy * mdy);
+                if (mLength < config.mouseRadius) {
+                    const forceFactor = (1 - mLength / config.mouseRadius) * config.mouseForce * (mouse.isDown ? -1 : 1);
+                    u.vx += mdx / mLength * forceFactor;
+                    u.vy += mdy / mLength * forceFactor;
+                }
+
                 u.trace[0].x += u.vx;
                 u.trace[0].y += u.vy;
-
                 u.vx *= u.force;
                 u.vy *= u.force;
 
-                for (var k = 0; k < u.trace.length - 1;) {
-                    var T = u.trace[k];
-                    var N = u.trace[++k];
+                // Update trace
+                for (let k = 0; k < u.trace.length - 1;) {
+                    const T = u.trace[k];
+                    const N = u.trace[++k];
                     N.x -= config.traceK * (N.x - T.x);
                     N.y -= config.traceK * (N.y - T.y);
                 }
 
+                // Draw trace
                 ctx.fillStyle = u.f;
-                for (var k = 0; k < u.trace.length; k++) {
-                    ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
+                if (config.glow) ctx.shadowColor = u.f;
+                
+                ctx.beginPath();
+                for (let k = 0; k < u.trace.length; k++) {
+                    ctx.moveTo(u.trace[k].x, u.trace[k].y);
+                    ctx.arc(u.trace[k].x, u.trace[k].y, u.R, 0, Math.PI * 2);
                 }
+                ctx.fill();
             }
+            ctx.shadowBlur = 0;
 
-            // === Chữ hologram đổi màu ===
-            var scale = 1 + 0.2 * Math.sin(time * 2); // phóng to thu nhỏ
+            // Draw center text
+            const scale = 1 + 0.2 * Math.sin(time * 2);
             ctx.save();
             ctx.translate(width / 2, height / 2);
             ctx.scale(scale, scale);
 
-            // Gradient đổi màu động (hologram)
-            var gradient = ctx.createLinearGradient(-150, 0, 150, 0);
-            gradient.addColorStop(0, "hsl(" + ((time * 50) % 360) + ", 100%, 70%)");
-            gradient.addColorStop(0.5, "hsl(" + ((time * 80 + 120) % 360) + ", 100%, 75%)");
-            gradient.addColorStop(1, "hsl(" + ((time * 100 + 240) % 360) + ", 100%, 65%)");
+            const gradient = ctx.createLinearGradient(-150, 0, 150, 0);
+            gradient.addColorStop(0, `hsl(${(time * 50) % 360}, 100%, 70%)`);
+            gradient.addColorStop(0.5, `hsl(${(time * 50 + 120) % 360}, 100%, 75%)`);
+            gradient.addColorStop(1, `hsl(${(time * 50 + 240) % 360}, 100%, 65%)`);
 
             ctx.fillStyle = gradient;
             ctx.font = "bold 60px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText("Thém ❤", 0, 0);
-
+            ctx.shadowColor = "white";
+            ctx.shadowBlur = 15;
+            ctx.fillText(config.text, 0, 0);
             ctx.restore();
 
-            window.requestAnimationFrame(loop, canvas);
-        };
-        loop();
-    };
+            requestAnimationFrame(loop);
+        }
 
-    var s = document.readyState;
-    if (s === "complete" || s === "loaded" || s === "interactive") init();
-    else document.addEventListener("DOMContentLoaded", init, false);
-</script>
+        // --- Event Listeners ---
+        window.addEventListener("resize", init);
+        
+        function updateMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let event = e.touches ? e.touches[0] : e;
+            mouse.x = (event.clientX - rect.left) * koef;
+            mouse.y = (event.clientY - rect.top) * koef;
+        }
+
+        window.addEventListener("mousemove", updateMousePos);
+        window.addEventListener("touchmove", updateMousePos, { passive: false });
+        
+        window.addEventListener("mousedown", () => mouse.isDown = true);
+        window.addEventListener("touchstart", () => mouse.isDown = true);
+        
+        window.addEventListener("mouseup", () => mouse.isDown = false);
+        window.addEventListener("touchend", () => mouse.isDown = false);
+
+        // --- Start ---
+        document.addEventListener("DOMContentLoaded", () => {
+            init();
+            loop();
+        });
+    </script>
 </body>
 </html>
